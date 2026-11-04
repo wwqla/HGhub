@@ -19,6 +19,11 @@ static IMG_CACHE: Lazy<Mutex<HashMap<String, Arc<Vec<u8>>>>> =
     Lazy::new(|| Mutex::new(HashMap::new()));
 static PL_CACHE: Lazy<Mutex<HashMap<String, Arc<String>>>> =
     Lazy::new(|| Mutex::new(HashMap::new()));
+/// 只缓存「带 Range 请求」的直链媒体（mp4 等）：WKWebView/AVFoundation 会对同一个
+/// 文件发很多次分段请求，不缓存就会每次整文件重下。
+static RANGE_CACHE: Lazy<Mutex<HashMap<String, (Option<String>, Arc<Vec<u8>>)>>> =
+    Lazy::new(|| Mutex::new(HashMap::new()));
+const RANGE_CACHE_MAX: usize = 3;
 
 const IMG_CACHE_MAX: usize = 240;
 const PL_CACHE_MAX: usize = 60;
@@ -190,6 +195,7 @@ fn absolutize_uri_in_attr(base: &str, line: &str) -> String {
 pub fn clear_caches() {
     if let Ok(mut g) = IMG_CACHE.lock() { g.clear(); }
     if let Ok(mut g) = PL_CACHE.lock() { g.clear(); }
+    if let Ok(mut g) = RANGE_CACHE.lock() { g.clear(); }
 }
 
 /* ───────────────────────── 协议响应 ───────────────────────── */
@@ -204,13 +210,98 @@ fn respond(
         .status(StatusCode::from_u16(status).unwrap_or(StatusCode::OK))
         .header("Content-Type", ctype)
         .header("Access-Control-Allow-Origin", "*")
+        .header("Access-Control-Expose-Headers", "Content-Length, Content-Range, Accept-Ranges")
+        .header("Accept-Ranges", "bytes")
         .header("Cache-Control", cache)
         .body(body)
         .unwrap_or_else(|_| Response::new(Vec::new()))
 }
 
-/// 统一入口：`hg://localhost/img?u=` / `hls?u=` / `seg?u=`
-pub async fn handle(path: &str, query: &str, scheme: &str) -> Response<Vec<u8>> {
+/// CORS 预检（hls.js 带 Range 头请求时 WebKit 可能先发 OPTIONS）
+pub fn preflight() -> Response<Vec<u8>> {
+    Response::builder()
+        .status(StatusCode::NO_CONTENT)
+        .header("Access-Control-Allow-Origin", "*")
+        .header("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS")
+        .header("Access-Control-Allow-Headers", "*")
+        .header("Access-Control-Max-Age", "86400")
+        .body(Vec::new())
+        .unwrap_or_else(|_| Response::new(Vec::new()))
+}
+
+/// 解析 `bytes=a-b` / `bytes=a-` / `bytes=-n`，返回闭区间 [start, end]
+fn parse_range(h: &str, len: usize) -> Option<(usize, usize)> {
+    if len == 0 {
+        return None;
+    }
+    let spec = h.trim().strip_prefix("bytes=")?.split(',').next()?.trim();
+    let (a, b) = spec.split_once('-')?;
+    let (start, end) = if a.is_empty() {
+        let n: usize = b.parse().ok()?;
+        (len.saturating_sub(n), len - 1)
+    } else {
+        let s: usize = a.parse().ok()?;
+        let e = if b.is_empty() { len - 1 } else { b.parse::<usize>().ok()?.min(len - 1) };
+        (s, e)
+    };
+    if start > end || start >= len {
+        return None;
+    }
+    Some((start, end))
+}
+
+/// 分片 / 直链媒体。带 Range 时按 206 返回（AVFoundation 播 mp4 必须支持）。
+async fn serve_seg(target: &str, range: Option<&str>) -> Response<Vec<u8>> {
+    let Some(range) = range else {
+        return match fetch_bytes(target).await {
+            Ok((ctype, bytes)) => respond(
+                200,
+                ctype.as_deref().unwrap_or("application/octet-stream"),
+                bytes,
+                "public, max-age=3600",
+            ),
+            Err(e) => respond(502, "text/plain", e.into_bytes(), "no-store"),
+        };
+    };
+
+    let hit = RANGE_CACHE.lock().unwrap().get(target).cloned();
+    let (ctype, bytes) = match hit {
+        Some(v) => v,
+        None => match fetch_bytes(target).await {
+            Ok((ctype, bytes)) => {
+                let v = (ctype, Arc::new(bytes));
+                cache_put(&RANGE_CACHE, target.to_string(), v.clone(), RANGE_CACHE_MAX);
+                v
+            }
+            Err(e) => return respond(502, "text/plain", e.into_bytes(), "no-store"),
+        },
+    };
+    let ctype = ctype.as_deref().unwrap_or("application/octet-stream").to_string();
+    let len = bytes.len();
+    match parse_range(range, len) {
+        Some((s, e)) => Response::builder()
+            .status(StatusCode::PARTIAL_CONTENT)
+            .header("Content-Type", ctype)
+            .header("Content-Range", format!("bytes {s}-{e}/{len}"))
+            .header("Accept-Ranges", "bytes")
+            .header("Access-Control-Allow-Origin", "*")
+            .header("Access-Control-Expose-Headers", "Content-Length, Content-Range, Accept-Ranges")
+            .header("Cache-Control", "public, max-age=3600")
+            .body(bytes[s..=e].to_vec())
+            .unwrap_or_else(|_| Response::new(Vec::new())),
+        None => Response::builder()
+            .status(StatusCode::RANGE_NOT_SATISFIABLE)
+            .header("Content-Range", format!("bytes */{len}"))
+            .header("Access-Control-Allow-Origin", "*")
+            .body(Vec::new())
+            .unwrap_or_else(|_| Response::new(Vec::new())),
+    }
+}
+
+/// 统一入口：`<origin>/img?u=` / `hls?u=` / `seg?u=`
+/// `origin` 是 WebView 里访问本协议的地址（见 lib.rs 的 LOCAL_ORIGIN），
+/// 改写后的 m3u8 用它拼分片与 key 地址。
+pub async fn handle(path: &str, query: &str, origin: &str, range: Option<&str>) -> Response<Vec<u8>> {
     let target = query
         .split('&')
         .find_map(|kv| kv.strip_prefix("u="))
@@ -221,7 +312,7 @@ pub async fn handle(path: &str, query: &str, scheme: &str) -> Response<Vec<u8>> 
         return respond(400, "text/plain", b"missing u".to_vec(), "no-store");
     }
 
-    let prefix = format!("{scheme}://hg.localhost");
+    let prefix = origin.trim_end_matches('/').to_string();
 
     match path {
         "/img" => match load_image(&target).await {
@@ -237,15 +328,7 @@ pub async fn handle(path: &str, query: &str, scheme: &str) -> Response<Vec<u8>> 
             ),
             Err(e) => respond(502, "text/plain", e.into_bytes(), "no-store"),
         },
-        "/seg" => match fetch_bytes(&target).await {
-            Ok((ctype, bytes)) => respond(
-                200,
-                ctype.as_deref().unwrap_or("application/octet-stream"),
-                bytes,
-                "public, max-age=3600",
-            ),
-            Err(e) => respond(502, "text/plain", e.into_bytes(), "no-store"),
-        },
+        "/seg" => serve_seg(&target, range).await,
         _ => respond(404, "text/plain", b"not found".to_vec(), "no-store"),
     }
 }
@@ -265,7 +348,7 @@ mod tests {
         let text = String::from_utf8_lossy(&bytes);
         println!("raw playlist len={} head={}", text.len(), &text[..text.len().min(160)]);
         let q = format!("u={}", enc(&url));
-        let resp = handle("/hls", &q, "http").await;
+        let resp = handle("/hls", &q, "http://hg.localhost", None).await;
         let body = String::from_utf8_lossy(resp.body()).to_string();
         println!("proxied status={} len={}", resp.status(), body.len());
         assert!(body.contains("#EXTM3U"));
@@ -275,17 +358,33 @@ mod tests {
             .expect("seg line").to_string();
         println!("seg line: {}", &seg_line[..seg_line.len().min(120)]);
         let seg_q = seg_line.split("?u=").nth(1).unwrap();
-        let seg = handle("/seg", &format!("u={seg_q}"), "http").await;
+        let seg = handle("/seg", &format!("u={seg_q}"), "http://hg.localhost", None).await;
         println!("segment status={} len={}", seg.status(), seg.body().len());
         assert_eq!(seg.status(), 200);
         assert!(seg.body().len() > 1000);
+    }
+
+    #[test]
+    fn range_parsing() {
+        assert_eq!(parse_range("bytes=0-1", 10), Some((0, 1)));
+        assert_eq!(parse_range("bytes=5-", 10), Some((5, 9)));
+        assert_eq!(parse_range("bytes=-3", 10), Some((7, 9)));
+        assert_eq!(parse_range("bytes=0-99", 10), Some((0, 9)));
+        assert_eq!(parse_range("bytes=10-", 10), None);
+    }
+
+    #[test]
+    fn rewrite_uses_mac_origin() {
+        let line = r#"#EXT-X-KEY:METHOD=AES-128,URI="https://a.com/k.key""#;
+        let out = rewrite_uri_attr(line, "hg://localhost");
+        assert!(out.contains(r#"URI="hg://localhost/seg?u=https%3A%2F%2Fa%2Ecom%2Fk%2Ekey""#), "{out}");
     }
 
     #[tokio::test]
     async fn playlist_rewrite_works() {
         let m3u8 = "https://yd-lphu-hls.hzjvlo.cn/videos5/247f3c9862e8e1537ade0b20c45ac962/247f3c9862e8e1537ade0b20c45ac962.m3u8?auth_key=1793700503-0-0-b9575bb11258cf40cd5499c052fc5820&v=3&time=0&via=hgdj&via_bm=dx";
         let q = format!("u={}", enc(m3u8));
-        let resp = handle("/hls", &q, "http").await;
+        let resp = handle("/hls", &q, "http://hg.localhost", None).await;
         let body = String::from_utf8_lossy(resp.body()).to_string();
         println!("status={} len={}", resp.status(), body.len());
         println!("--- head ---\n{}", &body[..body.len().min(600)]);

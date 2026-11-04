@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useStore, type Page, type Tab } from "./store";
-import { selfTest, mediaPlaybackProbe } from "./api";
+import { isMac, selfTest, mediaPlaybackProbe } from "./api";
 import { addPluginListener, invoke } from "@tauri-apps/api/core";
 import { runBack } from "./back";
 import Home from "./pages/Home";
@@ -138,7 +138,8 @@ function DesktopShell() {
       <div className="relative flex-1 min-h-0">
         <ShellInner collapsed={collapsed || theater} theater={theater} />
       </div>
-      <ResizeHandles />
+      {/* macOS 有系统窗框，原生可缩放；自绘缩放柄只给 Windows 无边框窗口 */}
+      {!isMac && <ResizeHandles />}
     </div>
   );
 }

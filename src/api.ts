@@ -9,11 +9,18 @@ import type {
 export const APP_VERSION = __APP_VERSION__;
 
 export const isAndroid = /Android/i.test(navigator.userAgent);
+/** macOS（WKWebView）。iPad/iPhone 的 UA 也含 "Mac OS X"，所以只认 Macintosh。 */
+export const isMac = !isAndroid && /Macintosh/i.test(navigator.userAgent);
+/** 布局分两套：桌面壳（Windows / macOS 共用，历史原因叫 "windows"）与移动端。 */
 export const platform: "android" | "windows" = isAndroid ? "android" : "windows";
+/** 给界面展示用的系统名 */
+export const osName = isAndroid ? "Android" : isMac ? "macOS" : "Windows";
 
-/** 自定义协议：Windows 与 Android 都是 http://<scheme>.localhost */
-const scheme = "http";
-export const LOCAL = `${scheme}://hg.localhost`;
+/** 自定义协议地址（Tauri 2 的约定）：
+ *  - Windows / Android：http://<scheme>.localhost/...
+ *  - macOS / iOS / Linux：<scheme>://localhost/...
+ *  必须与 src-tauri/src/lib.rs 里改写 m3u8 用的前缀保持一致。 */
+export const LOCAL = isMac ? "hg://localhost" : "http://hg.localhost";
 
 /** 封面：经本地协议解密（站点封面是 AES 密文）。 */
 export const cover = (url?: string, _w = 480) =>

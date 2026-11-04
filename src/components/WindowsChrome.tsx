@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useStore, type Tab } from "../store";
-import { APP_VERSION } from "../api";
+import { APP_VERSION, isMac, osName } from "../api";
 import { Avatar } from "./ui";
 import {
   IClose, IGrid, IGridF, IHome, IHomeF, IMinus, IMoon, IRestore, ISearch, ISidebar,
@@ -23,7 +23,7 @@ export function WindowsTitleBar({ collapsed, onToggle }: { collapsed: boolean; o
   }, []);
 
   return (
-    <header className="win-titlebar" data-tauri-drag-region
+    <header className={`win-titlebar ${isMac ? "is-mac" : ""}`} data-tauri-drag-region
       onDoubleClick={(e) => { if (!(e.target as HTMLElement).closest("button")) appWindow().toggleMaximize().catch(() => {}); }}>
       <div className="win-wordmark" data-tauri-drag-region>
         <Logo size={24} />
@@ -39,13 +39,14 @@ export function WindowsTitleBar({ collapsed, onToggle }: { collapsed: boolean; o
       <button className="win-caption-tool" aria-label="搜索" onClick={() => setTab("search")}>
         <ISearch size={17} strokeWidth={1.7} />
       </button>
-      <div className="win-caption-buttons">
+      {/* macOS 用系统红绿灯（titleBarStyle: Overlay），不画自绘按钮 */}
+      {!isMac && <div className="win-caption-buttons">
         <button aria-label="最小化" onClick={() => appWindow().minimize().catch(() => {})}><IMinus size={15} strokeWidth={1.5} /></button>
         <button aria-label={maxed ? "还原" : "最大化"} onClick={() => appWindow().toggleMaximize().catch(() => {})}>
           {maxed ? <IRestore size={14} strokeWidth={1.5} /> : <ISquare size={14} strokeWidth={1.5} />}
         </button>
         <button className="win-close" aria-label="关闭" onClick={() => appWindow().close().catch(() => {})}><IClose size={16} strokeWidth={1.5} /></button>
-      </div>
+      </div>}
     </header>
   );
 }
@@ -88,7 +89,7 @@ export function WindowsRail({ collapsed }: { collapsed: boolean }) {
               <small>{user ? "你的精彩，都在这里" : "留住每一次心动"}</small>
             </span>
           </button>
-          <span className="win-sidebar-version">HGhub for Windows {APP_VERSION}</span>
+          <span className="win-sidebar-version">HGhub for {osName} {APP_VERSION}</span>
         </div>
       </div>
     </nav>

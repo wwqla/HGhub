@@ -4,7 +4,7 @@
 
 **黄果短剧第三方客户端 · Rust + Tauri 2**
 
-Windows / Android 双端 · Fluent 设计 · 沉浸式竖屏播放
+Windows / macOS / Android · Fluent 设计 · 沉浸式竖屏播放
 ![alt text](docs/image.png)
 
 </div>
@@ -12,6 +12,31 @@ Windows / Android 双端 · Fluent 设计 · 沉浸式竖屏播放
 > ⚠️ 本项目仅供 **学习与技术交流**，不提供、不存储、不分发任何音视频内容。
 > 所有内容均来自第三方站点，请自行判断合规性，并在 24 小时内删除相关资源。
 
+
+## macOS 版
+
+> 本仓库在 [Minireel/HGhub](https://github.com/Minireel/HGhub) 基础上补了 macOS 适配，原项目的 MIT 版权与免责声明保持不变。
+
+### 下载
+
+- **最新 Release**：打开仓库右侧 Releases，下载 `HGhub_x.y.z_macOS_universal.dmg`（Apple Silicon 与 Intel 通用，需 macOS 11+）。
+- **最新构建**：Actions → **macOS** → 点最近一次成功的运行 → 页面底部 Artifacts 下载 `HGhub-macOS`（解压后得到 dmg）。
+
+### 安装与首次打开（未签名应用）
+
+1. 打开 dmg，把 **HGhub** 拖进「应用程序」。
+2. 首次双击会提示「无法验证开发者」。macOS 15 及以后**右键 → 打开已不再生效**，请这样放行：
+   打开 **系统设置 → 隐私与安全性**，滚到底部「安全性」，找到 HGhub 那一行点 **仍要打开**，输入密码确认即可。之后正常双击打开。
+3. 或者在「终端」执行一次（效果相同）：
+
+   ```bash
+   xattr -cr /Applications/HGhub.app
+   ```
+
+### 与 Windows 版的差异
+
+- 使用系统原生红绿灯窗口按钮和窗口缩放，其余界面与 Windows 版一致，没有新增设置项。
+- 本地媒体协议地址为 `hg://localhost/*`（Tauri 在 macOS 上的约定），视频由 hls.js 经 MSE 播放。
 
 ## 技术栈
 
@@ -47,8 +72,16 @@ Windows / Android 双端 · Fluent 设计 · 沉浸式竖屏播放
 ```bash
 pnpm install          # 首次安装
 pnpm app:dev          # 桌面端热重载
-pnpm app:build        # 打包 Windows 安装程序（NSIS）
+pnpm app:build        # 打包 Windows 安装程序（NSIS）；在 Mac 上运行则产出 .app + .dmg
 ```
+
+macOS 通用包（需 `rustup target add aarch64-apple-darwin x86_64-apple-darwin`）：
+
+```bash
+pnpm tauri build --target universal-apple-darwin --bundles app,dmg
+```
+
+CI：`.github/workflows/macos.yml` 在推送 main / 手动运行时产出 dmg（Artifacts），推 `v*` tag 时同时发布到 Release。
 
 Android（需 Android SDK + NDK，并配置 `ANDROID_HOME` / `NDK_HOME`）：
 
@@ -68,7 +101,7 @@ pnpm android:build    # 产出 APK
 1. **统一边缘信封**：站点把 `/api/**` 收敛为 `POST /api/edge/request`（`method/path/body(base64)/content_type` + `Authorization: Bearer`），本项目只对接这一个入口，无需处理 Cookie。
 2. **封面解密**：封面为 AES-128-CBC 密文，Rust 侧解密后经自定义协议输出，前端 `<img>` 直接使用。
 3. **HLS 代理**：m3u8 与分片经自定义协议转发并改写 `#EXT-X-KEY` / 分片地址，绕开 WebView 的 CORS 与防盗链。
-4. **自定义协议**：Windows 为 `http://hg.localhost/*`，Android 为 `https://hg.localhost/*`（由 Rust 侧按平台生成，避免 WebView 无法解析）。
+4. **自定义协议**：Windows / Android 为 `http://hg.localhost/*`，macOS 为 `hg://localhost/*`（Rust 侧 `LOCAL_ORIGIN` 与前端 `LOCAL` 按平台生成，必须一致，避免 WebView 无法解析）。直链媒体支持 HTTP Range（206），满足 macOS AVFoundation 的分段读取。
 5. **不做签名逆向**：只复用浏览器同源行为，接口字段均有文档与实测样本。
 
 接口细节见 [docs/API.md](docs/API.md)。

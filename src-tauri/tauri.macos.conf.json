@@ -1,0 +1,51 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "HGhub",
+        "width": 1200,
+        "height": 780,
+        "minWidth": 900,
+        "minHeight": 620,
+        "decorations": true,
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true,
+        "trafficLightPosition": {
+          "x": 16,
+          "y": 21
+        },
+        "transparent": false,
+        "resizable": true,
+        "center": true
+      }
+    ]
+  },
+  "bundle": {
+    "targets": [
+      "app",
+      "dmg"
+    ],
+    "category": "public.app-category.entertainment",
+    "copyright": "Copyright (c) HGhub contributors. MIT License.",
+    "macOS": {
+      "minimumSystemVersion": "11.0",
+      "dmg": {
+        "windowSize": {
+          "width": 600,
+          "height": 380
+        },
+        "appPosition": {
+          "x": 160,
+          "y": 190
+        },
+        "applicationFolderPosition": {
+          "x": 440,
+          "y": 190
+        }
+      },
+      "signingIdentity": "-"
+    }
+  }
+}

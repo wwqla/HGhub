@@ -6,6 +6,15 @@ mod session;
 use api::Api;
 use tauri::Manager;
 
+/// 自定义协议在 WebView 里的地址（Tauri 2 约定），m3u8 里的分片 / key 都改写到这里。
+/// - Windows（WebView2）与 Android：`http://<scheme>.localhost`
+/// - macOS / iOS（WKWebView）与 Linux（WebKitGTK）：`<scheme>://localhost`
+/// 前端 src/api.ts 的 LOCAL 必须与此一致。
+#[cfg(any(windows, target_os = "android"))]
+pub const LOCAL_ORIGIN: &str = "http://hg.localhost";
+#[cfg(not(any(windows, target_os = "android")))]
+pub const LOCAL_ORIGIN: &str = "hg://localhost";
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -22,11 +31,19 @@ pub fn run() {
             let uri = request.uri().clone();
             let path = uri.path().to_string();
             let query = uri.query().unwrap_or("").to_string();
-            // 自定义协议在 Windows 上是 http://<scheme>.localhost，Android 上是 https://
-            // 注意：请求 URI 的 scheme 是 "hg"，不能拿来拼子资源地址，否则 WebView 无法解析。
-            let scheme = "http".to_string();
+            let is_options = request.method() == tauri::http::Method::OPTIONS;
+            let range = request
+                .headers()
+                .get("range")
+                .and_then(|v| v.to_str().ok())
+                .map(|s| s.to_string());
+            // 注意：请求 URI 在各平台写法不同，不能拿它拼子资源地址，统一用 LOCAL_ORIGIN。
             tauri::async_runtime::spawn(async move {
-                let resp = media::handle(&path, &query, &scheme).await;
+                let resp = if is_options {
+                    media::preflight()
+                } else {
+                    media::handle(&path, &query, LOCAL_ORIGIN, range.as_deref()).await
+                };
                 responder.respond(resp);
             });
         })

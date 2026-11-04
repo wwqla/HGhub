@@ -185,6 +185,8 @@ input[type="range"].hg-range::-webkit-slider-thumb { -webkit-appearance: none; w
 }
 .win-caption-tool:hover { background: var(--p-hover); color: var(--p-on); }
 .win-caption-buttons { display: flex; align-items: center; margin-left: 4px; }
+/* macOS：系统红绿灯浮在标题栏左上（tauri.macos.conf.json 里 titleBarStyle=Overlay），给它让出位置 */
+.win-titlebar.is-mac { padding-left: 84px; padding-right: 10px; }
 .win-caption-buttons button {
   width: 44px; height: 30px; border: 0; background: transparent; color: var(--p-mut);
   display: inline-flex; align-items: center; justify-content: center; border-radius: 0;

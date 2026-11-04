@@ -1,0 +1,84 @@
+name: macOS
+
+# 出 macOS 通用（Apple Silicon + Intel）dmg。
+# - 推到 main / 手动运行：产物在本次运行页面底部 Artifacts 里下载（HGhub-macOS）
+# - 推 tag（v1.2.3）：额外把 dmg 发布到同名 Release
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+
+concurrency:
+  group: macos-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CI: "true"
+
+jobs:
+  macos:
+    name: macOS (universal dmg)
+    runs-on: macos-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 版本号对齐 tag
+        id: ver
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            V="${GITHUB_REF_NAME#v}"
+          else
+            V="$(node -p "require('./src-tauri/tauri.conf.json').version")"
+          fi
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+          node -e "const fs=require('fs');for(const p of ['src-tauri/tauri.conf.json','package.json']){const j=JSON.parse(fs.readFileSync(p));j.version=process.argv[1];fs.writeFileSync(p,JSON.stringify(j,null,2)+'\n')}" "$V"
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+          key: macos-universal
+
+      - run: pnpm install --frozen-lockfile
+
+      # 未签名（ad-hoc），tauri.macos.conf.json 里 signingIdentity = "-"
+      - name: 构建（universal dmg）
+        run: pnpm tauri build --target universal-apple-darwin --bundles app,dmg
+
+      - name: 收集产物
+        shell: bash
+        run: |
+          set -euo pipefail
+          V="${{ steps.ver.outputs.version }}"
+          mkdir -p artifacts
+          DMG="$(ls src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg | head -1)"
+          cp "$DMG" "artifacts/HGhub_${V}_macOS_universal.dmg"
+          codesign -dv --verbose=2 src-tauri/target/universal-apple-darwin/release/bundle/macos/*.app 2>&1 | head -5 || true
+          lipo -info src-tauri/target/universal-apple-darwin/release/bundle/macos/*.app/Contents/MacOS/* || true
+          ls -lh artifacts
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: HGhub-macOS
+          path: artifacts/*.dmg
+          if-no-files-found: error
+
+      - name: 发布到 Release（仅 tag）
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*.dmg
+          fail_on_unmatched_files: true
