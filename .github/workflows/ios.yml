@@ -57,9 +57,6 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: brew list xcodegen >/dev/null 2>&1 || brew install xcodegen
 
-      - name: 前端构建
-        run: pnpm build
-
       - name: 生成 Xcode 工程
         run: pnpm tauri ios init --ci
 
@@ -87,6 +84,17 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # Xcode 里的「Build Rust Code」脚本要连 tauri CLI 起的本地服务拿构建参数，
+          # 所以先用 `tauri ios build --open` 把服务起在后台（它也会构建前端、合并 Info.ios.plist），
+          # 再用 xcodebuild 出不签名的包。
+          ADDR="${TMPDIR:-/tmp}/com.hghub.huangguo-server-addr"
+          rm -f "$ADDR"
+          pnpm tauri ios build --open --ci > tauri-open.log 2>&1 &
+          TAURI_PID=$!
+          for i in $(seq 1 300); do [ -s "$ADDR" ] && break; kill -0 $TAURI_PID 2>/dev/null || break; sleep 2; done
+          cat tauri-open.log
+          [ -s "$ADDR" ] || { echo "tauri CLI 服务没起来"; exit 1; }
+          trap 'kill $TAURI_PID 2>/dev/null || true; pkill -x Xcode || true' EXIT
           cd src-tauri/gen/apple
           PROJ="$(ls -d *.xcodeproj | head -1)"
           SCHEME="$(xcodebuild -list -json -project "$PROJ" | python3 -c 'import json,sys;print([s for s in json.load(sys.stdin)["project"]["schemes"] if s.endswith("_iOS")][0])')"
