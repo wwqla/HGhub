@@ -18,7 +18,8 @@
         },
         "transparent": false,
         "resizable": true,
-        "center": true
+        "center": true,
+        "create": false
       }
     ]
   },

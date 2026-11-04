@@ -36,7 +36,7 @@ Windows / macOS / Android · Fluent 设计 · 沉浸式竖屏播放
 ### 与 Windows 版的差异
 
 - 使用系统原生红绿灯窗口按钮和窗口缩放，其余界面与 Windows 版一致，没有新增设置项。
-- 本地媒体协议地址为 `hg://localhost/*`（Tauri 在 macOS 上的约定），视频由 hls.js 经 MSE 播放。
+- 封面解密与视频代理在 macOS 上走本机回环服务（`http://127.0.0.1:<随机端口>/<随机令牌>/*`，仅本机可访问），因为 macOS 26.6 起 WKWebView 会拦截跨自定义协议的加载（见 tauri-apps/wry#1778）；视频由 hls.js 经 MSE 播放。
 
 ## 技术栈
 
@@ -101,7 +101,7 @@ pnpm android:build    # 产出 APK
 1. **统一边缘信封**：站点把 `/api/**` 收敛为 `POST /api/edge/request`（`method/path/body(base64)/content_type` + `Authorization: Bearer`），本项目只对接这一个入口，无需处理 Cookie。
 2. **封面解密**：封面为 AES-128-CBC 密文，Rust 侧解密后经自定义协议输出，前端 `<img>` 直接使用。
 3. **HLS 代理**：m3u8 与分片经自定义协议转发并改写 `#EXT-X-KEY` / 分片地址，绕开 WebView 的 CORS 与防盗链。
-4. **自定义协议**：Windows / Android 为 `http://hg.localhost/*`，macOS 为 `hg://localhost/*`（Rust 侧 `LOCAL_ORIGIN` 与前端 `LOCAL` 按平台生成，必须一致，避免 WebView 无法解析）。直链媒体支持 HTTP Range（206），满足 macOS AVFoundation 的分段读取。
+4. **自定义协议**：Windows / Android 为 `http://hg.localhost/*`，macOS 为本机回环 `http://127.0.0.1:<端口>/<令牌>/*`（`src-tauri/src/loopback.rs`，启动时注入 `window.__HG_LOCAL__`；老系统回退 `hg://localhost/*`）（Rust 侧 `LOCAL_ORIGIN` 与前端 `LOCAL` 按平台生成，必须一致，避免 WebView 无法解析）。直链媒体支持 HTTP Range（206），满足 macOS AVFoundation 的分段读取。
 5. **不做签名逆向**：只复用浏览器同源行为，接口字段均有文档与实测样本。
 
 接口细节见 [docs/API.md](docs/API.md)。

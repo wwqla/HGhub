@@ -16,11 +16,13 @@ export const platform: "android" | "windows" = isAndroid ? "android" : "windows"
 /** 给界面展示用的系统名 */
 export const osName = isAndroid ? "Android" : isMac ? "macOS" : "Windows";
 
-/** 自定义协议地址（Tauri 2 的约定）：
- *  - Windows / Android：http://<scheme>.localhost/...
- *  - macOS / iOS / Linux：<scheme>://localhost/...
- *  必须与 src-tauri/src/lib.rs 里改写 m3u8 用的前缀保持一致。 */
-export const LOCAL = isMac ? "hg://localhost" : "http://hg.localhost";
+/** 本地媒体代理地址（封面解密 / m3u8 改写 / 分片转发）：
+ *  - Windows / Android：自定义协议 http://hg.localhost/...
+ *  - macOS：Rust 侧起的本机回环服务 http://127.0.0.1:<端口>/<令牌>，启动时注入 window.__HG_LOCAL__。
+ *    不用 hg://localhost，是因为 macOS 26.6 起 WKWebView 拦截跨自定义协议的子资源加载。
+ *    注入缺失时回退到 hg://localhost（老系统上仍可用）。 */
+const injected = (window as unknown as { __HG_LOCAL__?: string }).__HG_LOCAL__;
+export const LOCAL = isMac ? (injected || "hg://localhost") : "http://hg.localhost";
 
 /** 封面：经本地协议解密（站点封面是 AES 密文）。 */
 export const cover = (url?: string, _w = 480) =>
