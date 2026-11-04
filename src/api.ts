@@ -8,21 +8,28 @@ import type {
 /** 应用版本（构建时由 vite.config.ts 从 package.json 注入） */
 export const APP_VERSION = __APP_VERSION__;
 
+/** Rust 侧（macOS / iOS）启动时注入：系统名与本机回环媒体服务地址 */
+const hgWin = window as unknown as { __HG_OS__?: string; __HG_LOCAL__?: string };
+
 export const isAndroid = /Android/i.test(navigator.userAgent);
-/** macOS（WKWebView）。iPad/iPhone 的 UA 也含 "Mac OS X"，所以只认 Macintosh。 */
-export const isMac = !isAndroid && /Macintosh/i.test(navigator.userAgent);
-/** 布局分两套：桌面壳（Windows / macOS 共用，历史原因叫 "windows"）与移动端。 */
-export const platform: "android" | "windows" = isAndroid ? "android" : "windows";
+/** iPhone / iPad。iPad 的 WebView 可能报 Macintosh UA，所以优先认 Rust 注入的系统名。 */
+export const isIOS = !isAndroid && (hgWin.__HG_OS__ === "ios" || /iPhone|iPad|iPod/i.test(navigator.userAgent));
+/** macOS（WKWebView）。iPhone 的 UA 也含 "Mac OS X"，所以只认 Macintosh 且排除 iOS。 */
+export const isMac = !isAndroid && !isIOS && /Macintosh/i.test(navigator.userAgent);
+/** 布局分两套：桌面壳（Windows / macOS 共用，历史原因叫 "windows"）与移动端（Android / iOS 共用，叫 "android"）。 */
+export const platform: "android" | "windows" = isAndroid || isIOS ? "android" : "windows";
 /** 给界面展示用的系统名 */
-export const osName = isAndroid ? "Android" : isMac ? "macOS" : "Windows";
+export const osName = isAndroid ? "Android" : isIOS ? "iOS" : isMac ? "macOS" : "Windows";
+
+// iOS：输入框字号 < 16px 时 WebKit 聚焦会自动放大页面，给根节点打标让 CSS 兜底
+if (isIOS) document.documentElement.classList.add("is-ios");
 
 /** 本地媒体代理地址（封面解密 / m3u8 改写 / 分片转发）：
  *  - Windows / Android：自定义协议 http://hg.localhost/...
- *  - macOS：Rust 侧起的本机回环服务 http://127.0.0.1:<端口>/<令牌>，启动时注入 window.__HG_LOCAL__。
- *    不用 hg://localhost，是因为 macOS 26.6 起 WKWebView 拦截跨自定义协议的子资源加载。
+ *  - macOS / iOS：Rust 侧起的本机回环服务 http://127.0.0.1:<端口>/<令牌>，启动时注入 window.__HG_LOCAL__。
+ *    不用 hg://localhost，是因为 macOS / iOS 26.6 起 WKWebView 拦截跨自定义协议的子资源加载。
  *    注入缺失时回退到 hg://localhost（老系统上仍可用）。 */
-const injected = (window as unknown as { __HG_LOCAL__?: string }).__HG_LOCAL__;
-export const LOCAL = isMac ? (injected || "hg://localhost") : "http://hg.localhost";
+export const LOCAL = isMac || isIOS ? (hgWin.__HG_LOCAL__ || "hg://localhost") : "http://hg.localhost";
 
 /** 封面：经本地协议解密（站点封面是 AES 密文）。 */
 export const cover = (url?: string, _w = 480) =>

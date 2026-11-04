@@ -99,6 +99,8 @@ body {
   user-select: none;
 }
 input, textarea { user-select: text; }
+/* iOS：字号 < 16px 的输入框聚焦会触发页面放大 */
+.is-ios input, .is-ios textarea { font-size: max(16px, 1em); }
 img, video { -webkit-user-drag: none; }
 button { cursor: pointer; font-family: inherit; }
 

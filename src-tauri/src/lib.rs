@@ -1,5 +1,5 @@
 mod api;
-#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+#[cfg_attr(not(any(target_os = "macos", target_os = "ios")), allow(dead_code))]
 mod loopback;
 mod media;
 mod net;
@@ -27,9 +27,9 @@ pub fn run() {
                 let state: tauri::State<Api> = app.state();
                 state.session.bind(dir);
             }
-            // macOS：窗口在这里手动创建（tauri.macos.conf.json 里 create=false），
+            // macOS / iOS：窗口在这里手动创建（tauri.macos/ios.conf.json 里 create=false），
             // 先起本机回环媒体服务，再把地址注入页面，前端 src/api.ts 的 LOCAL 读它。
-            #[cfg(target_os = "macos")]
+            #[cfg(any(target_os = "macos", target_os = "ios"))]
             {
                 let origin = tauri::async_runtime::block_on(loopback::start())
                     .map_err(|e| format!("本地媒体服务启动失败: {e}"))?;
@@ -41,9 +41,11 @@ pub fn run() {
                     .find(|w| w.label == "main")
                     .cloned()
                     .ok_or("缺少 main 窗口配置")?;
+                let os = if cfg!(target_os = "ios") { "ios" } else { "macos" };
                 let script = format!(
-                    "window.__HG_LOCAL__ = {};",
-                    serde_json::to_string(&origin).unwrap_or_else(|_| "null".into())
+                    "window.__HG_LOCAL__ = {}; window.__HG_OS__ = {:?};",
+                    serde_json::to_string(&origin).unwrap_or_else(|_| "null".into()),
+                    os
                 );
                 tauri::WebviewWindowBuilder::from_config(app.handle(), &cfg)?
                     .initialization_script(&script)

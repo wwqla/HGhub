@@ -4,7 +4,7 @@
 
 **黄果短剧第三方客户端 · Rust + Tauri 2**
 
-Windows / macOS / Android · Fluent 设计 · 沉浸式竖屏播放
+Windows / macOS / iOS / Android · Fluent 设计 · 沉浸式竖屏播放
 ![alt text](docs/image.png)
 
 </div>
@@ -15,7 +15,7 @@ Windows / macOS / Android · Fluent 设计 · 沉浸式竖屏播放
 
 ## macOS 版
 
-> 本仓库在 [Minireel/HGhub](https://github.com/Minireel/HGhub) 基础上补了 macOS 适配，原项目的 MIT 版权与免责声明保持不变。
+> 本仓库在 [Minireel/HGhub](https://github.com/Minireel/HGhub) 基础上补了 macOS 与 iOS 适配，原项目的 MIT 版权与免责声明保持不变。
 
 ### 下载
 
@@ -37,6 +37,32 @@ Windows / macOS / Android · Fluent 设计 · 沉浸式竖屏播放
 
 - 使用系统原生红绿灯窗口按钮和窗口缩放，其余界面与 Windows 版一致，没有新增设置项。
 - 封面解密与视频代理在 macOS 上走本机回环服务（`http://127.0.0.1:<随机端口>/<随机令牌>/*`，仅本机可访问），因为 macOS 26.6 起 WKWebView 会拦截跨自定义协议的加载（见 tauri-apps/wry#1778）；视频由 hls.js 经 MSE 播放。
+
+## iOS 版
+
+### 下载
+
+- **最新 Release**：下载 `HGhub_x.y.z_iOS_unsigned.ipa`（iPhone / iPad，需 iOS 15+）。
+- **最新构建**：Actions → **iOS** → 点最近一次成功的运行 → 页面底部 Artifacts 下载 `HGhub-iOS`（解压后得到 ipa）。
+
+### 安装（未签名 IPA，免费）
+
+iOS 不能直接装未签名应用，需要用自己的 Apple ID 签一次名。下面两个工具都免费：
+
+- **Sideloadly**（Windows / macOS）：iPhone 用数据线连电脑 → 打开 Sideloadly，把 ipa 拖进去 → 填你的 Apple ID → Start。
+- **AltStore**（Windows / macOS）：电脑装 AltServer，手机装 AltStore，再在 AltStore 里选这个 ipa 安装。
+
+装好后：
+
+1. 打开 **设置 → 通用 → VPN 与设备管理**，信任你的 Apple ID。
+2. iOS 16 及以后还要打开 **设置 → 隐私与安全性 → 开发者模式**，按提示重启。
+
+免费 Apple ID 签的应用 **7 天后过期**，到期用同一工具重签即可（数据不丢）；同时最多装 3 个这样的应用。有付费开发者账号的话签名后可长期使用。
+
+### 与 Android 版的差异
+
+- 界面与 Android 版一致（移动端布局、刘海 / 底部横条安全区），没有新增设置项；iOS 没有返回键，用页面上的返回按钮。
+- 封面解密与视频代理同 macOS，走本机回环服务；视频由 hls.js 播放（iOS 17.1+ 走 ManagedMediaSource），更老的系统自动改用系统原生 HLS。
 
 ## 技术栈
 
@@ -101,7 +127,7 @@ pnpm android:build    # 产出 APK
 1. **统一边缘信封**：站点把 `/api/**` 收敛为 `POST /api/edge/request`（`method/path/body(base64)/content_type` + `Authorization: Bearer`），本项目只对接这一个入口，无需处理 Cookie。
 2. **封面解密**：封面为 AES-128-CBC 密文，Rust 侧解密后经自定义协议输出，前端 `<img>` 直接使用。
 3. **HLS 代理**：m3u8 与分片经自定义协议转发并改写 `#EXT-X-KEY` / 分片地址，绕开 WebView 的 CORS 与防盗链。
-4. **自定义协议**：Windows / Android 为 `http://hg.localhost/*`，macOS 为本机回环 `http://127.0.0.1:<端口>/<令牌>/*`（`src-tauri/src/loopback.rs`，启动时注入 `window.__HG_LOCAL__`；老系统回退 `hg://localhost/*`）（Rust 侧 `LOCAL_ORIGIN` 与前端 `LOCAL` 按平台生成，必须一致，避免 WebView 无法解析）。直链媒体支持 HTTP Range（206），满足 macOS AVFoundation 的分段读取。
+4. **自定义协议**：Windows / Android 为 `http://hg.localhost/*`，macOS / iOS 为本机回环 `http://127.0.0.1:<端口>/<令牌>/*`（`src-tauri/src/loopback.rs`，启动时注入 `window.__HG_LOCAL__`；老系统回退 `hg://localhost/*`）（Rust 侧 `LOCAL_ORIGIN` 与前端 `LOCAL` 按平台生成，必须一致，避免 WebView 无法解析）。直链媒体支持 HTTP Range（206），满足 macOS AVFoundation 的分段读取。
 5. **不做签名逆向**：只复用浏览器同源行为，接口字段均有文档与实测样本。
 
 接口细节见 [docs/API.md](docs/API.md)。

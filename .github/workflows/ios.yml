@@ -1,0 +1,123 @@
+name: iOS
+
+# 出未签名 IPA（iPhone / iPad，arm64）。没有 Apple 开发者账号也能用：
+# 下载后用 Sideloadly / AltStore 以自己的 Apple ID 签名安装（免费账号每 7 天重签一次）。
+# - 推到 main / 手动运行：产物在本次运行页面底部 Artifacts 里下载（HGhub-iOS）
+# - 推 tag（v1.2.3）：额外把 IPA 发布到同名 Release
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CI: "true"
+
+jobs:
+  ios:
+    name: iOS (unsigned ipa)
+    runs-on: macos-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 版本号对齐 tag
+        id: ver
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            V="${GITHUB_REF_NAME#v}"
+          else
+            V="$(node -p "require('./src-tauri/tauri.conf.json').version")"
+          fi
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+          node -e "const fs=require('fs');for(const p of ['src-tauri/tauri.conf.json','package.json']){const j=JSON.parse(fs.readFileSync(p));j.version=process.argv[1];fs.writeFileSync(p,JSON.stringify(j,null,2)+'\n')}" "$V"
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-ios
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+          key: ios
+
+      - run: pnpm install --frozen-lockfile
+      - run: brew list xcodegen >/dev/null 2>&1 || brew install xcodegen
+
+      - name: 前端构建
+        run: pnpm build
+
+      - name: 生成 Xcode 工程
+        run: pnpm tauri ios init --ci
+
+      # tauri ios build 会做这两步，但它要求签名团队；这里直接用 xcodebuild 出未签名包，所以手动补上
+      - name: 合并 Info.plist / 换应用图标
+        shell: bash
+        run: |
+          set -euo pipefail
+          V="${{ steps.ver.outputs.version }}"
+          PLIST="$(ls src-tauri/gen/apple/*_iOS/Info.plist | head -1)"
+          python3 - "$PLIST" src-tauri/Info.ios.plist "$V" <<'PY'
+          import plistlib, sys
+          dst, src, v = sys.argv[1:]
+          d = plistlib.load(open(dst, "rb"))
+          d.update(plistlib.load(open(src, "rb")))
+          d["CFBundleShortVersionString"] = v
+          d["CFBundleVersion"] = v
+          plistlib.dump(d, open(dst, "wb"))
+          PY
+          ICONSET="src-tauri/gen/apple/Assets.xcassets/AppIcon.appiconset"
+          [ -d "$ICONSET" ] && cp src-tauri/icons/ios/*.png "$ICONSET/"
+          cat "$PLIST"
+
+      - name: 构建（未签名）
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd src-tauri/gen/apple
+          PROJ="$(ls -d *.xcodeproj | head -1)"
+          SCHEME="$(xcodebuild -list -json -project "$PROJ" | python3 -c 'import json,sys;print([s for s in json.load(sys.stdin)["project"]["schemes"] if s.endswith("_iOS")][0])')"
+          echo "project=$PROJ scheme=$SCHEME"
+          xcodebuild -project "$PROJ" -scheme "$SCHEME" -configuration release \
+            -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build \
+            ARCHS=arm64 ONLY_ACTIVE_ARCH=NO \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            build
+
+      - name: 打包 IPA
+        shell: bash
+        run: |
+          set -euo pipefail
+          V="${{ steps.ver.outputs.version }}"
+          APP="$(find src-tauri/gen/apple/build/Build/Products -maxdepth 2 -name '*.app' -path '*iphoneos*' | head -1)"
+          echo "app=$APP"
+          mkdir -p ipa/Payload artifacts
+          cp -R "$APP" ipa/Payload/
+          (cd ipa && zip -qry "../artifacts/HGhub_${V}_iOS_unsigned.ipa" Payload)
+          file "$APP"/*/ 2>/dev/null | head -3 || true
+          ls -lh artifacts
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: HGhub-iOS
+          path: artifacts/*.ipa
+          if-no-files-found: error
+
+      - name: 发布到 Release（仅 tag）
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*.ipa
+          fail_on_unmatched_files: true

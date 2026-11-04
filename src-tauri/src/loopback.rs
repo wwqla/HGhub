@@ -1,4 +1,4 @@
-//! macOS 专用：本机回环 HTTP 服务，承载封面 / m3u8 / 分片代理。
+//! macOS / iOS 专用：本机回环 HTTP 服务，承载封面 / m3u8 / 分片代理。
 //!
 //! 为什么不用 `hg://localhost`：macOS 26.6 起 WKWebView 会拦截「页面在一个自定义协议
 //! （tauri://localhost）上、子资源在另一个自定义协议（hg://）上」的跨协议加载，
@@ -40,13 +40,34 @@ pub async fn start() -> std::io::Result<String> {
     let base = format!("/{tok}");
     let origin_c = origin.clone();
     tauri::async_runtime::spawn(async move {
+        let mut listener = Some(listener);
         loop {
-            let Ok((stream, _)) = listener.accept().await else { continue };
-            let base = base.clone();
-            let origin = origin_c.clone();
-            tauri::async_runtime::spawn(async move {
-                let _ = serve_conn(stream, &base, &origin).await;
-            });
+            // iOS 挂起较久后系统会回收监听 socket，accept 持续报错：
+            // 丢掉旧的，在原端口重新绑定（页面里已注入的地址不变，继续可用）。
+            let l = match listener.take() {
+                Some(l) => l,
+                None => match TcpListener::bind(("127.0.0.1", port)).await {
+                    Ok(l) => l,
+                    Err(_) => {
+                        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                        continue;
+                    }
+                },
+            };
+            loop {
+                let stream = match l.accept().await {
+                    Ok((s, _)) => s,
+                    Err(_) => {
+                        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+                        break;
+                    }
+                };
+                let base = base.clone();
+                let origin = origin_c.clone();
+                tauri::async_runtime::spawn(async move {
+                    let _ = serve_conn(stream, &base, &origin).await;
+                });
+            }
         }
     });
     Ok(origin)
