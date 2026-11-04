@@ -19,7 +19,8 @@ env:
 jobs:
   macos:
     name: macOS (universal dmg)
-    runs-on: macos-latest
+    # macOS arm64 托管机经常排不上队（capacity constraints）；universal 包在 Intel 机器上一样能出
+    runs-on: macos-15-intel
     permissions:
       contents: write
     steps:
