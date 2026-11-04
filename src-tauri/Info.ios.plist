@@ -10,11 +10,10 @@
 	</dict>
 	<key>CFBundleDisplayName</key>
 	<string>HGhub</string>
+	<!-- 只竖屏：横屏视频全屏时由页面自己旋转画面（同安卓），避免与系统旋转叠加 -->
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
-		<string>UIInterfaceOrientationLandscapeLeft</string>
-		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
 </dict>
 </plist>

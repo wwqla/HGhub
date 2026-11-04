@@ -47,9 +47,16 @@ pub fn run() {
                     serde_json::to_string(&origin).unwrap_or_else(|_| "null".into()),
                     os
                 );
-                tauri::WebviewWindowBuilder::from_config(app.handle(), &cfg)?
-                    .initialization_script(&script)
-                    .build()?;
+                // iOS 不能用 from_config：主配置里的 1200×780 会被当成窗口 frame，
+                // 导致页面只占屏幕上半部分、底部露出白底。iOS 直接铺满屏幕。
+                #[cfg(target_os = "ios")]
+                let builder = {
+                    let _ = &cfg;
+                    tauri::WebviewWindowBuilder::new(app.handle(), "main", tauri::WebviewUrl::default())
+                };
+                #[cfg(target_os = "macos")]
+                let builder = tauri::WebviewWindowBuilder::from_config(app.handle(), &cfg)?;
+                builder.initialization_script(&script).build()?;
             }
             Ok(())
         })

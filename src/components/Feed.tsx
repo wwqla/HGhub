@@ -708,7 +708,7 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
       {/* 移动端进度条：22px 热区，可拖动 */}
       {!isDesktop && (
         <div ref={barRef} className="absolute inset-x-0 z-30"
-          style={{ bottom: fs ? "calc(var(--sab, 0px) + 52px)" : bottomInset - 2, height: 22, touchAction: "none" }}
+          style={{ bottom: fs ? "calc(var(--sab, 0px) + 52px)" : `calc(var(--sab, 0px) + ${bottomInset - 2}px)`, height: 22, touchAction: "none" }}
           onPointerDown={onBarDown} onPointerMove={onBarMove} onPointerUp={onBarUp} onPointerCancel={onBarUp}>
           <div className={`absolute inset-x-0 bottom-[6px] transition-all duration-150 ${barPct !== null || fs ? "h-[5px]" : "h-[2.5px]"} bg-white/20`}>
             <div className="h-full relative"
@@ -729,7 +729,7 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
       {!isDesktop && !fs && (
         <button onClick={() => setFs(true)} aria-label="全屏"
           className="absolute right-4 z-20 w-9 h-9 rounded-full bg-black/45 flex items-center justify-center text-white/90 pressable elev-1"
-          style={{ bottom: bottomInset + 56 }}>
+          style={{ bottom: `calc(var(--sab, 0px) + ${bottomInset + 56}px)` }}>
           <IExpand size={17} />
         </button>
       )}
