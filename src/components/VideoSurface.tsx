@@ -1,6 +1,6 @@
 import { useEffect, useImperativeHandle, useRef, forwardRef, useState } from "react";
 import Hls from "hls.js";
-import { LOCAL, playlist } from "../api";
+import { LOCAL, nativeHls, playlist } from "../api";
 
 export type VideoHandle = {
   el: () => HTMLVideoElement | null;
@@ -80,7 +80,7 @@ const VideoSurface = forwardRef<VideoHandle, Props>(function VideoSurface(
     };
     applySettings();
 
-    if (useHls && Hls.isSupported()) {
+    if (useHls && !nativeHls && Hls.isSupported()) {
       const hls = new Hls({
         enableWorker: true,
         maxBufferLength: 30,

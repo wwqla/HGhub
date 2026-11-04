@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { api, cover, fmt, fmtTime, mediaUrl, platform } from "../api";
+import { api, cover, fmt, fmtTime, isIOS, mediaUrl, platform } from "../api";
 import type { Detail, Episode, Post, VideoCard } from "../types";
 import { useStore } from "../store";
 import { Avatar, Img, Sheet } from "./ui";
@@ -463,9 +463,12 @@ export default function Feed({ videoIds, startIndex = 0, title = "", mode, kind 
       className={`absolute inset-0 overflow-hidden bg-black player-root ${isDesktop ? "player-surface" : ""} ${theater ? "is-theater" : ""} ${rotated ? "fs-landscape" : ""} ${isDesktop && idle ? "is-idle" : ""}`}
       onPointerMove={() => { if (isDesktop) wake(); }}>
       {/* 氛围背景 */}
+      {/* 全屏高斯模糊底图在 iOS 上 GPU 开销大（叠在视频下持续合成），iOS 不画 */}
+      {!isIOS && (
       <div className="absolute inset-0 scale-110 blur-3xl opacity-25 pointer-events-none">
         {posterUrl && <img src={posterUrl} alt="" className="w-full h-full object-cover" />}
       </div>
+      )}
 
       <div ref={boxRef} onScroll={onScroll}
         className="absolute inset-y-0 left-0 overflow-y-scroll no-bar snap-y snap-mandatory"

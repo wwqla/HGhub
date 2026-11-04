@@ -23,6 +23,8 @@ export const osName = isAndroid ? "Android" : isIOS ? "iOS" : isMac ? "macOS" : 
 
 // iOS：输入框字号 < 16px 时 WebKit 聚焦会自动放大页面，给根节点打标让 CSS 兜底
 if (isIOS) document.documentElement.classList.add("is-ios");
+/** iOS 用系统原生 HLS（AVPlayer 硬解）：hls.js 在 iOS 上要用 JS 转封装 + 解密每个分片，CPU 占用高、手机发烫 */
+export const nativeHls = isIOS;
 
 /** 本地媒体代理地址（封面解密 / m3u8 改写 / 分片转发）：
  *  - Windows / Android：自定义协议 http://hg.localhost/...

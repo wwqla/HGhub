@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import Hls from "hls.js";
-import { fmtTime, playlist } from "../api";
+import { fmtTime, nativeHls, playlist } from "../api";
 import { ICompress, IExpand, IPauseF, IPlayF, IVol, IVolMute } from "../icons";
 
 type Props = {
@@ -39,7 +39,7 @@ export default function Player({
 
     if (hlsRef.current) { hlsRef.current.destroy(); hlsRef.current = null; }
 
-    if (Hls.isSupported()) {
+    if (!nativeHls && Hls.isSupported()) {
       const hls = new Hls({
         enableWorker: true,
         lowLatencyMode: false,
