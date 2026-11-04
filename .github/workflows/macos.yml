@@ -1,11 +1,11 @@
 name: macOS
 
 # 出 macOS 通用（Apple Silicon + Intel）dmg。
-# - 推到 main / 手动运行：产物在本次运行页面底部 Artifacts 里下载（HGhub-macOS）
+# - 手动运行（Actions 页 Run workflow）：产物在本次运行页面底部 Artifacts 里下载（HGhub-macOS）
 # - 推 tag（v1.2.3）：额外把 dmg 发布到同名 Release
+# 推 main 不再自动跑：免费 macOS 托管机很少，和 iOS 构建抢机器会两边都排队超时
 on:
   push:
-    branches: [main]
     tags: ["v*"]
   workflow_dispatch:
 
