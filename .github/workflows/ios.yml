@@ -21,7 +21,7 @@ jobs:
   ios:
     name: iOS (unsigned ipa)
     # macOS arm64 托管机经常排不上队（capacity constraints），iOS 是交叉编译，用 Intel 机器即可
-    runs-on: macos-15-intel
+    runs-on: macos-latest
     permissions:
       contents: write
     steps:
