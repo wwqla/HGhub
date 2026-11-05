@@ -20,12 +20,17 @@ env:
 jobs:
   ios:
     name: iOS (unsigned ipa)
-    # macOS arm64 托管机经常排不上队（capacity constraints），iOS 是交叉编译，用 Intel 机器即可
-    runs-on: macos-latest
+    # macos-latest 已切到 macOS 26 / Xcode 26，Tauri 的 Swift 包链接时缺 swiftCompatibility56；固定 macOS 15 + Xcode 16
+    runs-on: macos-15
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@v4
+
+      - name: 选用 Xcode 16
+        run: |
+          X=$(ls -d /Applications/Xcode_16*.app | sort -V | tail -1)
+          echo "使用 $X"; sudo xcode-select -s "$X"; xcodebuild -version
 
       - name: 版本号对齐 tag
         id: ver
