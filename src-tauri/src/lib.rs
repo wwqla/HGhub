@@ -63,20 +63,17 @@ pub fn run() {
                 #[cfg(target_os = "ios")]
                 {
                     let _ = _win.with_webview(|wv| {
-                        use objc2_ui_kit::{UIColor, UIScrollViewContentInsetAdjustmentBehavior};
-                        use objc2_web_kit::WKWebView;
-                        #[allow(unused_unsafe)]
+                        use objc2::{class, msg_send, runtime::AnyObject};
                         unsafe {
-                            let view: &WKWebView = &*(wv.inner() as *const WKWebView);
-                            let black = UIColor::blackColor();
-                            view.setOpaque(false);
-                            view.setBackgroundColor(Some(&black));
-                            let sv = view.scrollView();
-                            sv.setContentInsetAdjustmentBehavior(
-                                UIScrollViewContentInsetAdjustmentBehavior::Never,
-                            );
-                            sv.setBackgroundColor(Some(&black));
-                            sv.setBounces(false);
+                            let view = wv.inner() as *mut AnyObject;
+                            let black: *mut AnyObject = msg_send![class!(UIColor), blackColor];
+                            let _: () = msg_send![view, setOpaque: false];
+                            let _: () = msg_send![view, setBackgroundColor: black];
+                            let sv: *mut AnyObject = msg_send![view, scrollView];
+                            // UIScrollViewContentInsetAdjustmentBehaviorNever = 2
+                            let _: () = msg_send![sv, setContentInsetAdjustmentBehavior: 2isize];
+                            let _: () = msg_send![sv, setBackgroundColor: black];
+                            let _: () = msg_send![sv, setBounces: false];
                         }
                     });
                 }
