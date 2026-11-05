@@ -1,6 +1,6 @@
 [package]
 name = "huangguo-client"
-version = "1.0.1"
+version = "1.0.2"
 description = "HGhub · 黄果短剧客户端"
 authors = ["HGhub"]
 edition = "2021"
@@ -34,6 +34,10 @@ base64 = "0.22"
 percent-encoding = "2"
 once_cell = "1"
 url = "2"
+
+[target.'cfg(target_os = "ios")'.dependencies]
+objc2-ui-kit = { version = "0.3", features = ["UIColor", "UIView", "UIResponder", "UIScrollView"] }
+objc2-web-kit = { version = "0.3", features = ["WKWebView", "objc2-ui-kit"] }
 
 [profile.release]
 panic = "abort"

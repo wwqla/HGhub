@@ -56,7 +56,30 @@ pub fn run() {
                 };
                 #[cfg(target_os = "macos")]
                 let builder = tauri::WebviewWindowBuilder::from_config(app.handle(), &cfg)?;
-                builder.initialization_script(&script).build()?;
+                let _win = builder.initialization_script(&script).build()?;
+                // iOS：WKWebView 默认按安全区自动缩进内容（contentInsetAdjustmentBehavior=automatic），
+                // 页面高度会少掉顶部+底部安全区，底下露出白色底。关掉自动缩进，安全区由前端 env() 自己处理；
+                // 底色改黑，避免任何缝隙露白。
+                #[cfg(target_os = "ios")]
+                {
+                    let _ = _win.with_webview(|wv| {
+                        use objc2_ui_kit::{UIColor, UIScrollViewContentInsetAdjustmentBehavior};
+                        use objc2_web_kit::WKWebView;
+                        #[allow(unused_unsafe)]
+                        unsafe {
+                            let view: &WKWebView = &*(wv.inner() as *const WKWebView);
+                            let black = UIColor::blackColor();
+                            view.setOpaque(false);
+                            view.setBackgroundColor(Some(&black));
+                            let sv = view.scrollView();
+                            sv.setContentInsetAdjustmentBehavior(
+                                UIScrollViewContentInsetAdjustmentBehavior::Never,
+                            );
+                            sv.setBackgroundColor(Some(&black));
+                            sv.setBounces(false);
+                        }
+                    });
+                }
             }
             Ok(())
         })

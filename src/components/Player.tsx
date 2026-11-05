@@ -39,7 +39,8 @@ export default function Player({
 
     if (hlsRef.current) { hlsRef.current.destroy(); hlsRef.current = null; }
 
-    if (!nativeHls && Hls.isSupported()) {
+    let stopFallback = () => {};
+    const startHls = () => {
       const hls = new Hls({
         enableWorker: true,
         lowLatencyMode: false,
@@ -64,13 +65,46 @@ export default function Player({
         else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) hls.recoverMediaError();
         else { hls.destroy(); hlsRef.current = null; }
       });
+    };
+    if (!nativeHls && Hls.isSupported()) {
+      startHls();
     } else {
       // Safari / 部分 WebView 原生支持 HLS
       video.src = url;
       if (autoPlay) video.play().catch(() => setPlaying(false));
+
+      // iOS 原生 HLS 若打不开（报错，或开始播放后 8 秒还没出画面），自动退回 hls.js，保证能播
+      if (nativeHls && Hls.isSupported()) {
+        let settled = false;
+        const fallback = () => {
+          if (settled) return;
+          settled = true;
+          video.removeAttribute("src");
+          video.load();
+          startHls();
+        };
+        let timer = 0;
+        const ok = () => { settled = true; window.clearTimeout(timer); };
+        // 只在真正要播放时计时，避免预加载的视频被误判
+        const armed = () => {
+          window.clearTimeout(timer);
+          if (!settled && video.readyState < 2) timer = window.setTimeout(fallback, 8000);
+        };
+        video.addEventListener("error", fallback, { once: true });
+        video.addEventListener("loadeddata", ok, { once: true });
+        video.addEventListener("play", armed);
+        if (!video.paused) armed();
+        stopFallback = () => {
+          window.clearTimeout(timer);
+          video.removeEventListener("play", armed);
+          video.removeEventListener("error", fallback);
+          video.removeEventListener("loadeddata", ok);
+        };
+      }
     }
 
     return () => {
+      stopFallback();
       if (hlsRef.current) { hlsRef.current.destroy(); hlsRef.current = null; }
     };
   }, [src, autoPlay]);
